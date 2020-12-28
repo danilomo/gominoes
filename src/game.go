@@ -170,7 +170,7 @@ func (game *Game) insertPiece(piece Gomino, pos BoardSide) {
 	}
 }
 
-// FirstTurn aaa
+// FirstTurn returns true if no player did a move, otherwise it returns false
 func (game *Game) FirstTurn() bool {
 	return len(game.Board) == 0
 }
