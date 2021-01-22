@@ -1,14 +1,9 @@
 package main
 
 import (
-	"time"
-
-	gominoes "github.com/danilomo/gominoes/src"
+	"github.com/danilomo/gominoes/cmd"
 )
 
 func main() {
-
-	gominoes.StartServer(4, 8001)
-
-	time.Sleep(3600 * time.Second)
+	cmd.Execute()
 }

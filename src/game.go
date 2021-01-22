@@ -1,7 +1,5 @@
 package gominoes
 
-// TODO: add logging framework
-
 import (
 	"math/rand"
 )
@@ -80,10 +78,12 @@ type Move struct {
 // if the move is not valid, the turn stays the same
 func (game *Game) PlayMove(move Move) (bool, string) {
 
+	move.Player = game.Turn
+
 	if move.Player >= len(game.Players) {
 		return false, "Invalid player number"
 	} else if game.Turn != move.Player {
-		return false, "This is not your turn"
+		//return false, "This is not your turn"
 	} else if move.HandPosition >= len(game.Players[move.Player].Hand) || move.HandPosition < 0 {
 		return false, "Invalid piece position for player"
 	}
@@ -170,7 +170,7 @@ func (game *Game) insertPiece(piece Gomino, pos BoardSide) {
 	}
 }
 
-// FirstTurn returns true if no player did a move, otherwise it returns false
+// FirstTurn aaa
 func (game *Game) FirstTurn() bool {
 	return len(game.Board) == 0
 }

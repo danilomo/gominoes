@@ -1,0 +1,39 @@
+syntax = "proto3";
+package grpc;
+
+service GameService {
+    rpc joinGame(stream Message) returns (stream Message);
+}
+
+message Move {
+    int32 player = 1;
+    int32 handPosition = 2;
+    int32 side = 3;
+}
+
+message Update {
+    Move move = 1;
+    int32 turn = 2;
+}
+
+message Response {
+    bool ok = 1;
+    string error = 2;
+}
+
+message Join {
+    string gameId = 1;
+}
+
+message Skip {
+}
+
+message Message {
+    oneof content {
+        Move move = 1;
+        Update update = 2;
+        Response response = 3;
+        Join join = 4;
+        Skip skip = 5;
+    }
+}

@@ -1,119 +1,73 @@
 package gominoes
 
-import (
-	"bufio"
-	"fmt"
-	"net"
-	"strconv"
-)
+// RemotePlayer represents a remote client as a Gominoes player. The methods from this interface
+// should implement the network calls that will push events to the player (Greeting, Update, SendResponse)
+// and that methods that will pull a move from a player in his/her turn.
+// It should use a bi-directional networking protocol like normal sockets, websockets, GRPC stream, etc.
+type RemotePlayer interface {
+	// Greeting sends the initial greeting message to the player
+	Greeting()
 
-// StartServer starts a Gominoes match as a TCP server
-func StartServer(players int, port int) {
-	game := NewGame(players)
-	server := game.Start()
+	// Update sends the update message to each player after each turn in the Gominoes match
+	Update(updateMsg *Update)
 
-	startServerAux(server, func() (net.Listener, error) {
-		return net.Listen("tcp", "localhost:"+strconv.Itoa(port))
-	})
+	// SendResponse sends the message in response to a move, indicating the move was accepted by
+	// the game server, or if it is an erroneous move (in this case the turn does not advance
+	// and the user is asked for a move again)
+	SendResponse(responseMsg *Response)
+
+	// Reads a move or skip message from the user, when it is his/her turn
+	ReadMessage() Message
 }
 
-func startServerAux(server *GameServer, serverGen func() (net.Listener, error)) {
-	players := len(server.players)
-	l, err := serverGen()
-
-	if err != nil {
-		// TODO: handle error
-		return
-	}
-	defer l.Close()
-
-	for i := 0; i < players; i++ {
-		c, err := l.Accept()
-
-		if err != nil {
-			// TODO: handle error
-			continue
-		}
-
-		go joinPlayer(i, c, server)
-	}
-
-}
-
-func joinPlayer(i int, c net.Conn, server *GameServer) {
-	server.players[i] <- JoinMsg()
-	reader := bufio.NewReader(c)
-	writer := bufio.NewWriter(c)
-
-	writer.WriteString("Welcome, player! " + fmt.Sprint(i) + "\n")
-	writer.Flush()
+// StartPlayerLoop starts an event loop for a remote Gominoes player.
+// The playerNumber should be a number between 0 and 3, which identifies the player in a Gominoes match
+// The player argument represents an object which is able to read from and write to the remote connection,
+// for the remote client, whatever the network protocol is
+func (server *GameServer) StartPlayerLoop(playerNumber int, player RemotePlayer) {
+	playerChannel := server.players[playerNumber]
+	playerChannel <- JoinMsg()
+	player.Greeting()
 
 	for {
-		updateMsg := <-server.players[i]
-
+		updateMsg := <-playerChannel
 		update, ok := updateMsg.AsUpdate()
 
-		if !ok || update.Turn != i {
+		if !ok || update.Turn != playerNumber {
 			continue
 		}
 
-		writer.WriteString("Board: " + fmt.Sprint(server.game.Board) + "\n")
-		writer.WriteString("Your hand: " + fmt.Sprint(server.game.Players[i].Hand) + "\n")
-		writer.WriteString("Enter your move: ")
-		writer.Flush()
+		player.Update(update)
 
 		for {
-			line, err := reader.ReadString('\n')
+			messageFromPlayer := player.ReadMessage()
 
-			if err != nil {
-				// TODO: handle error
-				fmt.Println("|> ", err.Error())
-				continue
-			}
+			if messageFromPlayer.IsSkip() {
+				playerChannel <- messageFromPlayer
+				response, ok := (<-playerChannel).AsResponse()
 
-			// discarding CR and newline
-			line = line[0 : len(line)-2]
-
-			msg, ok := Convert(line)
-
-			if !ok {
-				writer.WriteString("Invalid command <" + line + ">\n" +
-					"Enter your move: ")
-				writer.Flush()
-				continue
-			}
-
-			if msg.IsSkip() {
-				server.players[i] <- msg
-				response, ok := (<-server.players[i]).AsResponse()
-
-				if ok && !response.ok {
-					writer.WriteString("Error: " + response.errorMsg + "\n" +
-						"Enter your move: ")
-					writer.Flush()
+				if ok && !response.Ok {
+					player.SendResponse(response)
 					continue
 				}
 
 				break
 			}
 
-			move, isMove := msg.AsMove()
+			move, isMove := messageFromPlayer.AsMove()
 
 			if !isMove {
-				writer.WriteString("Invalid move <" + line + ">\n" +
-					"Enter your move: ")
-				writer.Flush()
+				errorResponse := &Response{Ok: false, ErrorMsg: "Invalid move."}
+				player.SendResponse(errorResponse)
+
 				continue
 			}
 
-			move.Player = i
-			server.players[i] <- MoveMsg(*move)
-			response, ok := (<-server.players[i]).AsResponse()
+			playerChannel <- MoveMsg(*move)
+			response, ok := (<-playerChannel).AsResponse()
 
-			if ok && !response.ok {
-				writer.WriteString("Error: " + response.errorMsg + "\n" +
-					"Enter your move: ")
-				writer.Flush()
+			if ok && !response.Ok {
+				player.SendResponse(response)
 				continue
 			}
 
